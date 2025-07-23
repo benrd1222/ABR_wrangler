@@ -1,3 +1,12 @@
+% this is weirdly coded, stacking functions within functions, might be
+% better to instantiate a class with all of these functions, would
+% definitley make testing them a whole lot easier
+
+% how would this work with running the script, the script would become a
+% function that initializes a class by referencing a seperate class object?
+% or can I define the class first, not familiar with matlabs order of
+% operations
+
 function [AllData] = abr_dp_analyzer_v05(verbose)
 
 if (verbose)
@@ -6,18 +15,18 @@ end
 
 originaldir = pwd;
 
-disp("Please select the root directory containing the runs you wish to analyze")
-rootdir = uigetdir;
-cd(rootdir)
+disp("Please select the project directory containing the runs you wish to analyze")
+projdir = uigetdir;
+cd(projdir)
 warning('off','MATLAB:table:ModifiedAndSavedVarnames')
-output_f = fullfile(rootdir,'analyzer-output.xlsx');
+output_f = fullfile(projdir,'analyzer-output.xlsx');
 if (isfile(output_f))
     delete(output_f)
 end
 
 
-% Get list of subdirectories of the selected root directory
-d = dir(rootdir);
+% Get list of subdirectories of the selected project directory
+d = dir(projdir);
 idir=[d(:).isdir]; % logical vector of whether this is a directory or file
 dirs = {d(idir).name}; % extract only directories
 dirs(ismember(dirs,{'.','..'})) = []; % remove . and .. from the list of directories
@@ -42,6 +51,9 @@ if (verbose)
 end
 DP_summ = GetDPThresholds();
 writetable(DP_summ, output_f, 'Sheet', 'DP Thresholds')
+
+% To Do: Consider if there is an easier way to run this for each latency,
+% how is it stored
 
 % Create 80dB Amplitudes sheet
 amp_summ_80 = fieldatdB(80, 'P1Amplitude');
@@ -109,7 +121,7 @@ end
 %% functions
 
     function DP_summ = GetDPThresholds()
-        AllData = analyzedp(rootdir);
+        AllData = analyzedp(projdir);
         DP_summ = table();
         for run = AllData
             run_t = table();
@@ -177,7 +189,7 @@ end
 
         for run = dirs
             run_name = run{:};
-            working_d = fullfile(rootdir,run_name);
+            working_d = fullfile(projdir,run_name);
             cd(working_d)
 
             raw_subrun_data = {dir("ABR*").name};
@@ -269,7 +281,7 @@ end
             if (verbose)
                 fprintf("Getting analyzed data from %s \n",run_name)
             end
-            working_d = fullfile(rootdir,run_name);
+            working_d = fullfile(projdir,run_name);
             cd(working_d)
 
             % subruns have analyzed txt of the form ABR__analyzed
@@ -364,11 +376,11 @@ end
 end
 
 
-function [AllData] = analyzedp(rootdir)
+function [AllData] = analyzedp(projdir)
 AllData = {};
 
-% Get list of subdirectories of the selected root directory
-d = dir(rootdir);
+% Get list of subdirectories of the selected project directory
+d = dir(projdir);
 idir=[d(:).isdir]; % logical vector of whether this is a directory or file
 dirs = {d(idir).name}; % extract only directories
 dirs(ismember(dirs,{'.','..'})) = []; % remove . and .. from the list of directories
@@ -377,7 +389,7 @@ Num_Runs = 0;
 
 for subdir = dirs
     run_name = subdir{:};
-    finfo = dir(fullfile(rootdir,run_name,"DP-*")); % get DP files
+    finfo = dir(fullfile(projdir,run_name,"DP-*")); % get DP files
 
     finfo = finfo(~contains({finfo.name},"analyzed")); % remove analysis files
 
