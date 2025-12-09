@@ -1,5 +1,6 @@
 .asv
 .Rproj.user
+.Rhistory
 *.Rproj
 Data/**
 test.R
