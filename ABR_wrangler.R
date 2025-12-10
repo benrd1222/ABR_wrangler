@@ -1,5 +1,6 @@
 # Load Libraries ----
 library(tidyverse)
+library(writexl)
 source("utils.R")
 
 # Find all sample subdirectories ----
@@ -7,6 +8,7 @@ source("utils.R")
 # that the number of ABR and DP files present in the subdirectory matches the
 # expected amount listed in "Experiment State.txt"
 projDir <- "./Data" #TODO: think about how to run this script for a user- snakemake could be easy
+exportDir <- projDir
 
 message("Finding samples...")
 
@@ -32,6 +34,8 @@ names(ABR_waveforms) <- samples
 names(DP_thresholds) <- samples
 names(DP_peaks) <- samples
 
+# TODO: keep a running vector of all unique levels and frequencies seen in the ABR data
+unique_freqs <- c() # want to keep track of the unique frequencies seen
 for (i in 1:N) {
   cur_sample <- str_glue("{projDir}/{samples[i]}")
   message(str_glue("Currently working on {cur_sample}"))
@@ -84,10 +88,15 @@ for (i in 1:N) {
     header <- readLines(cur_file, n = 6)
 
     #extract info about frequency and threshold from the header
-    freq <- str_extract(header[2], "\\d+\\.\\d+")
-    threshold <- str_extract(header[1], "\\d+\\.\\d+")
+    freq <- as.numeric(str_extract(header[2], "\\d+\\.\\d+"))
+    threshold <- as.numeric(str_extract(header[1], "\\d+\\.\\d+"))
     threshold <- c(freq, threshold)
     rm(header)
+
+    # add frequency to the vector if not already there
+    if (!(freq %in% unique_freqs)) {
+      unique_freqs <- append(unique_freqs, freq)
+    }
 
     # Read the data as a tsv skipping the header, add frequecny for the data
     ABR_analyzed <- read.delim(cur_file, sep = "\t", skip = 6)
@@ -130,14 +139,11 @@ for (i in 1:N) {
     }
   }
 
-  # The DP files come pre-stacked, so I just need to extract once per sample and add it to the list
-  message(str_glue("On to the DP data"))
-  message(str_glue("The current file is {cur_sample}/{DP_analyzed_fp}"))
+  # For DP data we just need to iterate throught the samples and look at one file each
   cur_file <- str_glue("{cur_sample}/{DP_analyzed_fp}")
 
   DP_thresh <- read_delim(cur_file, delim = "\t")
 
-  message(str_glue("The current file is {cur_sample}/{DP_wave_fp}"))
   cur_file <- str_glue("{cur_sample}/{DP_wave_fp}")
   # Header row 6 is the colnames, but rows 1-5 and row 7 are not needed so, we need
   # to read all the lines as data first then subset then read the data as a delim
@@ -154,26 +160,67 @@ for (i in 1:N) {
 
 # User input ----
 # TODO:
-# Prompt the user for how many peaks deep they would like the wrangled data to include
-# this refers to which peaks to determine rawwaveforms for
-# Prompt the user for the dB levels they would like amplitudes and latencies to
-# be wrangled for
+# Prompt the user for override of basic functioning
+
+# Should default to reasonable values which is the base way of doing it
 
 # Merge and format ----
 # Merge all samples in list ABR_thresholds, merge by col 1
-ABR_thresh_exp <- ABR_thresh_table(ABR_thresholds)
+# so looks like write, excel writes all of the sheets at once from a list,
+# which means we just need to name the entries in a list and append the data,
+# then we can export at the very end
+export_xl <- list()
 
-DP_thresh_exp <- DP_thresh_table(DP_thresholds)
+export_xl$ABR_thresholds <- ABR_thresh_table(ABR_thresholds)
 
-# write to excel
+export_xl$DP_thresholds <- DP_thresh_table(DP_thresholds)
 
-# wrap this in a loop for the level the user wants peaks and latencies for,
-# just directly write them in order as sheets to the excel
-ABR_amplitudes <- ABR_extract_amplitude(80, 1, ABR_peaks)
-ABR_latencies <- ABR_extract_latency(80, 1, ABR_peaks)
+# write to excel ----
 
-# now Luis also wants the amplitude extraction along all levels for each of the
-# of the frequencies as it's own sheet, could make the extraction functions
-# polymorphic: e.g. if given a level and a peak, extract the information across
-# all frequencies, but if given a frequency and a peak, extract it across all levels
-# actually seems quite easy just a bit of logic to determine the function to filter by...
+levels = c(80, 70)
+for (l in levels) {
+  sheet_name <- str_glue("{l}dB Amplitudes")
+
+  export_xl[[sheet_name]] <- ABR_extract(level = l, peak = 1, pl = ABR_peaks)
+
+  sheet_name <- str_glue("{l}dB Latencies")
+
+  export_xl[[sheet_name]] <- ABR_extract(
+    level = l,
+    peak = 1,
+    amp_switch = FALSE,
+    pl = ABR_peaks
+  )
+}
+
+# Outputs the amplitudes by level for the unique frequencies found in the original
+for (f in unique_freqs) {
+  sheet_name <- str_glue("Amplitudes@{f}kHz")
+
+  # This filtering is to stay consistent with user desired output
+  tmp <- ABR_extract(freq = f, peak = 1, pl = ABR_peaks) |>
+    filter(Level %% 10 == 0) |>
+    arrange(desc(Level))
+
+  export_xl[[sheet_name]] <- tmp
+}
+
+# now we similarly want to extract the waveforms at 80 dB for each sample across
+# frequencies, needs to be it's own loop for order of the sheets
+
+# could technically allow for the input of the waveforms into the ABR_extract function
+# if there was an easy way to tell the datastructures apart. For now I will
+# allocate it to it's own function
+for (f in unique_freqs) {
+  sheet_name <- str_glue("ABR Waveforms@{f}kHz")
+  export_xl[[sheet_name]] <- ABR_wave(level = 80, freq = f, wl = ABR_waveforms)
+}
+
+# we also want a version that extracts within one sample all of the levels passed
+
+# similar loop for DP
+
+# now we also need to grab the waveforms across all levels for a specific frequency for each sample, likely each sample needs to be it's own sheet for his
+# prism workflow
+
+write_xlsx(export_xl, str_glue("{exportDir}/wrangler_output.xlsx"))
