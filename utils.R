@@ -125,74 +125,21 @@ ABR_extract_latency <- function(level, peak, pl) {
 
 # Needs to be able to deal with missing entries for a whole frequency
 # this is an absolute pain for some reason, need to step through it for the example case giving me trouble
-ABR_wave <- function(freq, level, wl) {
-  n <- length(wl)
 
-  # logic on valid frequency
+# Let's have a think about what we need from the ABR waveform extraction function
+# really we might just need one that can take a sample name, a level, a frequency
+# a return us that one waveform
+# then in the main script we can loop across samples and combine them there if we need or just loop across levels if that's what we need
 
-  # level has to be made a character so if it doesn't match it will error through
-  # dplyr
+# Takes in a dataframe for a specific sample, a frequency and a level a returns a
+# the waveform for that one measurement as a vector
+ABR_wave_extract <- function(freq, level, dw) {
   level <- as.character(level)
-  out <- c()
 
-  out <- wl[[1]] |>
+  out <- dw |>
     select(frequency, {{ level }}) |>
     filter(frequency == freq) |>
     select(-frequency)
 
-  for (i in 2:n) {
-    new <- wl[[i]] |>
-      select(frequency, {{ level }}) |>
-      filter(frequency == freq) |>
-      select(-frequency)
-
-    # check if there is data for this frequency
-    if (length(new) > 0) {
-      #if there is data ensure that it has the right number of row
-      dif <- abs(nrow(new) - nrow(out))
-      if (nrow(new) < nrow(out)) {
-        add <- rep(NA, dif)
-        new <- c(new, add)
-      } else if (nrow(new) > nrow(out)) {
-        #check dimension of previous data add rows of NA's equal to the diff
-        add_mat <- matrix(NA, nrow = dim(out)[1], ncol = dim(out)[2])
-        out <- rbind(out, add_mat)
-      }
-    } else {
-      new <- rep(NA, nrow(out))
-    }
-
-    out <- cbind(out, new)
-  }
-
-  out <- as.data.frame(out)
-  colnames(out) <- c(names(wl))
   return(out)
-}
-
-DP_wave <- function() {}
-
-# could be useful to have a function that just yanks all of the unique levels and frequencies from the entire dataset, defintely could make this an object
-out <- wl[[1]] |>
-  select(frequency, {{ level }}) |>
-  filter(frequency == freq) |>
-  select(-frequency)
-
-for (i in 2:n) {
-  new <- wl[[i]] |>
-    select(frequency, {{ level }}) |>
-    filter(frequency == freq) |>
-    select(-frequency)
-
-  dif <- abs(length(out) - length(new))
-  if (length(new) < length(out)) {
-    add <- rep(0, dif)
-    new <- c(new, add)
-  } else if (length(new) > length(out)) {
-    # ahhh this is faulty logic because out becomes a matrix past i==1
-    add <- rep(0, dif)
-    out <- c(out, add)
-  }
-
-  out <- cbind(out, new)
 }

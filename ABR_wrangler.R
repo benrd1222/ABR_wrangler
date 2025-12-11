@@ -34,8 +34,10 @@ names(ABR_waveforms) <- samples
 names(DP_thresholds) <- samples
 names(DP_peaks) <- samples
 
-# TODO: keep a running vector of all unique levels and frequencies seen in the ABR data
 unique_freqs <- c() # want to keep track of the unique frequencies seen
+unique_levels <- c()
+unique_f2 <- c()
+
 for (i in 1:N) {
   cur_sample <- str_glue("{projDir}/{samples[i]}")
   message(str_glue("Currently working on {cur_sample}"))
@@ -103,6 +105,10 @@ for (i in 1:N) {
     ABR_analyzed <- ABR_analyzed |>
       mutate(frequency = rep(freq, n()))
 
+    #keep track of unique levels
+    cur_levels <- unique(ABR_analyzed$Level)
+    unique_levels <- unique(c(unique_levels, cur_levels))
+
     # filter the trailing empty data column
 
     rm(cur_file)
@@ -151,11 +157,31 @@ for (i in 1:N) {
   DP_wave <- DP_wave[-c(1:5, 7)]
   DP_wave <- read_delim(I(DP_wave), delim = "\t")
 
+  # save the unique f2 frequencies
+  cur_f2 <- unique(DP_wave$`f2(Hz)`)
+  unique_f2 <- unique(c(unique_f2, cur_f2))
+
   # save the output to it's sample name
   DP_thresholds[[samples[i]]] <- DP_thresh
   DP_peaks[[samples[i]]] <- DP_wave
 
-  rm(list = c('ABR_analyzed', 'ABR_wave', 'DP_thresh', 'DP_wave'))
+  rm(
+    list = c(
+      'ABR_analyzed',
+      'ABR_wave',
+      'DP_thresh',
+      'DP_wave',
+      'cur_file',
+      'cur_levels',
+      'cur_sample',
+      'expected_size',
+      'freq',
+      'header',
+      'num_ABRs',
+      'num_DPs',
+      'threshold'
+    )
+  )
 }
 
 # User input ----
@@ -177,6 +203,7 @@ export_xl$DP_thresholds <- DP_thresh_table(DP_thresholds)
 
 # write to excel ----
 
+# may want this to be a user input
 levels = c(80, 70)
 for (l in levels) {
   sheet_name <- str_glue("{l}dB Amplitudes")
@@ -204,6 +231,7 @@ for (f in unique_freqs) {
 
   export_xl[[sheet_name]] <- tmp
 }
+rm(tmp)
 
 # now we similarly want to extract the waveforms at 80 dB for each sample across
 # frequencies, needs to be it's own loop for order of the sheets
@@ -211,16 +239,79 @@ for (f in unique_freqs) {
 # could technically allow for the input of the waveforms into the ABR_extract function
 # if there was an easy way to tell the datastructures apart. For now I will
 # allocate it to it's own function
+# TODO: consider moving this sample collating logic into the main function
+# as that is what the rest of the functions in utils.R do
 for (f in unique_freqs) {
-  sheet_name <- str_glue("ABR Waveforms@{f}kHz")
-  export_xl[[sheet_name]] <- ABR_wave(level = 80, freq = f, wl = ABR_waveforms)
+  sheet_name <- str_glue("AllSample_ABRWaveforms@{f}kHz")
+  tmp_list <- list()
+
+  for (s in samples) {
+    df_tmp <- ABR_waveforms[[s]]
+    tmp_list[[s]] <- ABR_wave_extract(level = 80, freq = f, dw = df_tmp)
+  }
+
+  tmp_list_clean <- map(tmp_list, function(df) {
+    if (is.null(df) || nrow(df) == 0) {
+      return(numeric(0))
+    }
+    return(df[[1]]) # only one column we need
+  })
+
+  # maximum length across all samples
+  max_len <- max(map_int(tmp_list_clean, length))
+
+  df_out <- tmp_list_clean |>
+    map(
+      ~ {
+        length(.x) <- max_len
+        return(.x)
+      }
+    ) |>
+    as_tibble()
+
+  export_xl[[sheet_name]] <- df_out
+}
+rm(tmp_list, tmp_list_clean, df_out)
+
+# Extracting the full set of waveforms per sample across all levels for a specific frequency
+# TODO: see if users want a specific frequency and or less levels combined
+wave_specific_f <- unique_freqs[1]
+
+# the data of ABR_waveforms is already cleaned and setup to be exported in this format
+# just add another loop if he wants all of the frequencies on seperate sheets,
+# or just export the entire ABR_waveforms list
+for (s in samples) {
+  sheet_name <- str_glue("{s}_ABRWaveforms@{wave_specific_f}kHz")
+  export_xl[[sheet_name]] <- ABR_waveforms[[s]] |>
+    filter(frequency == wave_specific_f)
 }
 
-# we also want a version that extracts within one sample all of the levels passed
-
 # similar loop for DP
+# lastly we need to organize the DP waveform data
+# need to keep track of the DP f2 frequencies in the main loop
+# then here we just loop over the unique frequencies and take 2f2-f1 from each sample and exportl
+# I don't think this is even ugly enough to need a helper function
+for (f in unique_f2) {
+  sheet_name <- str_glue("DP(2f1-f2)@{f}Hz")
+  to_select <- "2f1-f2(dB)"
+  out <- data.frame()
 
-# now we also need to grab the waveforms across all levels for a specific frequency for each sample, likely each sample needs to be it's own sheet for his
-# prism workflow
+  for (s in samples) {
+    new <- DP_peaks[[s]] |>
+      select(`:dB`, `f2(Hz)`, {{ to_select }}) |>
+      filter(`f2(Hz)` == f) |>
+      select(-`f2(Hz)`)
+
+    if (is_empty(out)) {
+      out <- new
+    } else {
+      out <- out |>
+        full_join(new, by = ":dB")
+    }
+  }
+  colnames(out) <- c("Level", samples)
+
+  export_xl[[sheet_name]] <- out
+}
 
 write_xlsx(export_xl, str_glue("{exportDir}/wrangler_output.xlsx"))
