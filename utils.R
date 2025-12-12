@@ -29,11 +29,8 @@ DP_thresh_table <- function(tl) {
   return(table)
 }
 
-# Given a level and a peak and a list of analyzed ABR data, extract relevant data
-# and return the dataframe
-# Given a frequency, a peak, and a list of analyzed ABR data, extract relevant data # across all levels
-# This is probably better suited for an S4 OOP package, we want a generic and then
-# changes to the method called depending on the parameters passed
+# Given a frequency, a peak, and a list of analyzed ABR data, extract relevant data
+# across all levels
 ABR_extract <- function(
   level = FALSE,
   freq = FALSE,
@@ -95,41 +92,6 @@ ABR_extract <- function(
   stop("Something went wrong!")
 }
 
-# OBSOLETE: keeping until I determine that the above function works properly
-# will be just about the same as ABR_extract_peak, so could maybe make the latency
-# or peak data extraction be a parameter
-ABR_extract_latency <- function(level, peak, pl) {
-  n <- length(pl)
-
-  # steal the logic from above or combine the functions
-  to_select <- str_glue("P{peak}.Latency")
-
-  table <- data.frame(pl[[1]]) |>
-    select(Level, frequency, {{ to_select }}) |>
-    filter(Level == level) |>
-    select(!Level)
-
-  for (i in 2:n) {
-    new <- data.frame(pl[[i]]) |>
-      select(Level, frequency, {{ to_select }}) |>
-      filter(Level == level) |>
-      select(!Level)
-
-    table <- table |>
-      full_join(new, by = "frequency")
-  }
-
-  colnames(table) <- c("Frequency", names(pl))
-  return(table)
-}
-
-# Needs to be able to deal with missing entries for a whole frequency
-# this is an absolute pain for some reason, need to step through it for the example case giving me trouble
-
-# Let's have a think about what we need from the ABR waveform extraction function
-# really we might just need one that can take a sample name, a level, a frequency
-# a return us that one waveform
-# then in the main script we can loop across samples and combine them there if we need or just loop across levels if that's what we need
 
 # Takes in a dataframe for a specific sample, a frequency and a level a returns a
 # the waveform for that one measurement as a vector

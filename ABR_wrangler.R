@@ -3,10 +3,9 @@ library(tidyverse)
 library(writexl)
 source("utils.R")
 
-# Find all sample subdirectories ----
+options(readr.show_col_types = FALSE) # supress readr column specs
 
-# that the number of ABR and DP files present in the subdirectory matches the
-# expected amount listed in "Experiment State.txt"
+# Find all sample subdirectories ----
 projDir <- "./Data" #TODO: think about how to run this script for a user- snakemake could be easy
 exportDir <- projDir
 
@@ -18,8 +17,6 @@ N <- length(samples)
 
 message(str_glue("Found all samples: "))
 message(str_glue("{samples}", .sep = " "))
-
-# generalize everything below to be performed per each sample
 
 # These lists include the relevant data for each sample in the project
 ABR_thresholds <- vector("list", N)
@@ -40,7 +37,6 @@ unique_f2 <- c()
 
 for (i in 1:N) {
   cur_sample <- str_glue("{projDir}/{samples[i]}")
-  message(str_glue("Currently working on {cur_sample}"))
 
   ABR_analyzed_fp <- list.files(
     cur_sample,
@@ -105,14 +101,11 @@ for (i in 1:N) {
     ABR_analyzed <- ABR_analyzed |>
       mutate(frequency = rep(freq, n()))
 
-    #keep track of unique levels
+    # keep track of unique levels
     cur_levels <- unique(ABR_analyzed$Level)
     unique_levels <- unique(c(unique_levels, cur_levels))
 
-    # filter the trailing empty data column
-
-    rm(cur_file)
-
+    # Moving on to the ABR waveform data
     cur_file <- str_glue("{cur_sample}/{ABR_wave_fp[j]}")
     header <- readLines(cur_file, n = 7)
 
@@ -123,7 +116,7 @@ for (i in 1:N) {
     ABR_wave <- ABR_wave |>
       mutate(frequency = rep(freq, n()))
 
-    # if j=1 add dataframe to the ABR_peaks list, else colbind
+    # if j=1 add dataframe to the ABR_peaks list, else join
     # writing the data to organized format
     if (j == 1) {
       ABR_thresholds[[samples[i]]] <- threshold
@@ -145,7 +138,7 @@ for (i in 1:N) {
     }
   }
 
-  # For DP data we just need to iterate throught the samples and look at one file each
+  # For DP data we just need to iterate through the samples and look at one file each
   cur_file <- str_glue("{cur_sample}/{DP_analyzed_fp}")
 
   DP_thresh <- read_delim(cur_file, delim = "\t")
@@ -182,6 +175,8 @@ for (i in 1:N) {
       'threshold'
     )
   )
+
+  message(str_glue("Finished data extraction for {cur_sample}"))
 }
 
 # User input ----
@@ -191,18 +186,15 @@ for (i in 1:N) {
 # Should default to reasonable values which is the base way of doing it
 
 # Merge and format ----
-# Merge all samples in list ABR_thresholds, merge by col 1
-# so looks like write, excel writes all of the sheets at once from a list,
-# which means we just need to name the entries in a list and append the data,
-# then we can export at the very end
+# Using write_xlsx means we need to collect out data frames in a named list
+# and then when we write the list it will name the sheets accordingly
 export_xl <- list()
 
 export_xl$ABR_thresholds <- ABR_thresh_table(ABR_thresholds)
 
 export_xl$DP_thresholds <- DP_thresh_table(DP_thresholds)
 
-# write to excel ----
-
+message("Organizing data for graphpad output")
 # may want this to be a user input
 levels = c(80, 70)
 for (l in levels) {
@@ -315,3 +307,5 @@ for (f in unique_f2) {
 }
 
 write_xlsx(export_xl, str_glue("{exportDir}/wrangler_output.xlsx"))
+
+message("Succesfully wrangled data")
