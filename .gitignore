@@ -4,3 +4,4 @@
 *.Rproj
 Data/**
 test.R
+config.yaml

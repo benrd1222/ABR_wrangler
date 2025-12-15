@@ -1,13 +1,17 @@
 # Load Libraries ----
 library(tidyverse)
 library(writexl)
+library(yaml)
 source("utils.R")
 
 options(readr.show_col_types = FALSE) # supress readr column specs
 
 # Find all sample subdirectories ----
-projDir <- "./Data" #TODO: think about how to run this script for a user- snakemake could be easy
-exportDir <- projDir
+# read a config.yaml to get all of the needed directories
+config_list <- read_yaml("config.yaml")
+
+projDir <- config_list$project_root
+exportDir <- projDir #maybe if I want to change later
 
 message("Finding samples...")
 
@@ -166,7 +170,6 @@ for (i in 1:N) {
       'DP_wave',
       'cur_file',
       'cur_levels',
-      'cur_sample',
       'expected_size',
       'freq',
       'header',
